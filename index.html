@@ -791,10 +791,10 @@
       if (ball.x+BALL_R > canvas.width) { ball.x=canvas.width-BALL_R; ball.vx=-Math.abs(ball.vx); normSpeed(); }
       if (ball.y-BALL_R < 0)            { ball.y=BALL_R;              ball.vy= Math.abs(ball.vy); normSpeed(); }
 
-      // Ball flew past the fist into the sky = out of bounds
-      if (ball.y < -60) { loseLife(); return; }
+      // Ball flew above the fist lane = out of bounds, lose a life
+      if (ball.y + BALL_R < my - FIST_RY - 10) { loseLife(); return; }
 
-      // Ball fell below the screen (shouldn't normally happen) = relaunch
+      // Ball fell below the screen (shouldn't normally happen)
       if (ball.y > canvas.height + 60) { loseLife(); return; }
 
       // Fist has priority over bricks
