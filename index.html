@@ -359,7 +359,7 @@
   </div>
 </div>
 
-<div id="score-box">BRICKS SMASHED: <span id="score">0</span></div>
+<div id="score-box">BRICKS: <span id="score">0</span> &nbsp;|&nbsp; LIVES: <span id="lives-display">❤️❤️❤️</span></div>
 <div id="hint" style="display:none">Click anywhere to drop the ball!</div>
 <button id="cta-btn">Play Now</button>
 
@@ -383,7 +383,7 @@
   const ROWS      = 4;
   const GROUND_H  = 80;
   const BALL_R    = 14;
-  const BASE_SPD  = 10;
+  const BASE_SPD  = 7.5;
   // Fist hitbox ellipse radii
   const FIST_RX   = 38, FIST_RY = 28;
 
@@ -392,10 +392,37 @@
   let particles     = [];
   let floaters      = [];
   let score         = 0;
+  let lives         = 3;
   let gameActive    = false;
   let frame         = 0;
   let ballSpeed     = BASE_SPD;
   let brickCooldown = 0;
+
+  const livesEl = document.getElementById('lives-display');
+
+  function updateLivesDisplay() {
+    livesEl.textContent = '❤️'.repeat(Math.max(0, lives));
+  }
+
+  function loseLife() {
+    lives--;
+    updateLivesDisplay();
+    if (lives <= 0) {
+      ball.active = false;
+      gameActive  = false;
+      // Show a game-over floater and re-show the play button after a delay
+      addFloater(canvas.width / 2, canvas.height * 0.4, 'GAME OVER');
+      setTimeout(() => {
+        ctaBtn.style.display = '';
+        ctaBtn.textContent   = 'Try Again';
+      }, 1800);
+    } else {
+      // Brief pause then relaunch
+      ball.active = false;
+      addFloater(canvas.width / 2, my - 60, `${lives} left!`);
+      setTimeout(launchBall, 900);
+    }
+  }
 
   // ── Mouse ─────────────────────────────────────────────────
   let mx = 400;
@@ -647,7 +674,10 @@
   }
 
   // ── Score floaters ────────────────────────────────────────
-  function addFloater(x, y, text) { floaters.push({ x, y, text, life:1, decay:.016 }); }
+  function addFloater(x, y, text) {
+    const big = text === 'GAME OVER';
+    floaters.push({ x, y, text, life: 1, decay: big ? 0.005 : 0.016 });
+  }
 
   function updateFloaters() {
     floaters.forEach(f => { f.y-=1.3; f.life-=f.decay; });
@@ -656,10 +686,16 @@
 
   function drawFloaters() {
     floaters.forEach(f => {
-      ctx.save(); ctx.globalAlpha=f.life;
-      ctx.font='bold 22px Georgia'; ctx.textAlign='center';
-      ctx.lineWidth=3; ctx.strokeStyle='#5a2a00'; ctx.fillStyle='#FFD700';
-      ctx.strokeText(f.text,f.x,f.y); ctx.fillText(f.text,f.x,f.y); ctx.restore();
+      const big = f.text === 'GAME OVER';
+      ctx.save(); ctx.globalAlpha = f.life;
+      ctx.font = big ? 'bold 56px Georgia' : 'bold 22px Georgia';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = big ? 6 : 3;
+      ctx.strokeStyle = big ? '#600' : '#5a2a00';
+      ctx.fillStyle   = big ? '#ff4444' : '#FFD700';
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
     });
   }
 
@@ -755,8 +791,11 @@
       if (ball.x+BALL_R > canvas.width) { ball.x=canvas.width-BALL_R; ball.vx=-Math.abs(ball.vx); normSpeed(); }
       if (ball.y-BALL_R < 0)            { ball.y=BALL_R;              ball.vy= Math.abs(ball.vy); normSpeed(); }
 
-      // Off bottom → relaunch
-      if (ball.y > canvas.height + 60) { launchBall(); return; }
+      // Ball flew past the fist into the sky = out of bounds
+      if (ball.y < -60) { loseLife(); return; }
+
+      // Ball fell below the screen (shouldn't normally happen) = relaunch
+      if (ball.y > canvas.height + 60) { loseLife(); return; }
 
       // Fist has priority over bricks
       if (checkFistHit()) break;
@@ -802,10 +841,12 @@
   ctaBtn.addEventListener('click', e => {
     e.stopPropagation();
     ctaBtn.style.display = 'none';
+    ctaBtn.textContent   = 'Play Now';
     hintEl.style.display = 'none';
     bricks.forEach(b => { b.alive = true; });
     particles = []; floaters = [];
     score = 0; scoreEl.textContent = '0';
+    lives = 3; updateLivesDisplay();
     ballSpeed  = BASE_SPD;
     gameActive = true;
     launchBall();
