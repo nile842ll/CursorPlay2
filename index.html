@@ -398,8 +398,14 @@
   let brickCooldown = 0;
 
   // ── Mouse ─────────────────────────────────────────────────
-  let mx = 400, my = 300;
-  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+  let mx = 400;
+  // Fist is locked to a horizontal paddle lane above the bricks
+  const FIST_LANE_RATIO = 0.68; // 68% down the screen
+  let my = 0; // computed in resize and each frame
+
+  function updateFistLane() { my = canvas.height * FIST_LANE_RATIO; }
+
+  document.addEventListener('mousemove', e => { mx = e.clientX; });
 
   // ── Fist squash/stretch state ─────────────────────────────
   let fistSX = 1, fistSY = 1, fistFlash = 0;
@@ -411,6 +417,7 @@
   function resize() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
+    updateFistLane();
     buildBricks();
   }
   window.addEventListener('resize', resize);
@@ -809,12 +816,25 @@
     frame++;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    updateFistLane();
     if (gameActive) updateBall();
     updateFist();
     updateParticles();
     updateFloaters();
 
     bricks.forEach(drawBrick);
+
+    // Paddle lane track line
+    if (gameActive) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 14]);
+      ctx.beginPath(); ctx.moveTo(0, my); ctx.lineTo(canvas.width, my); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     particles.filter(p => p.type==='trail'||p.type==='dust').forEach(drawParticle);
     if (ball.active) drawBall();
     particles.filter(p => p.type!=='trail'&&p.type!=='dust').forEach(drawParticle);
