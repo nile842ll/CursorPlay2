@@ -12,7 +12,7 @@
       height: 100vh;
       overflow: hidden;
       font-family: 'Georgia', serif;
-      cursor: crosshair;
+      cursor: none;
       user-select: none;
     }
 
@@ -371,6 +371,7 @@
 
 <script>
 (function () {
+  'use strict';
   const canvas  = document.getElementById('gameCanvas');
   const ctx     = canvas.getContext('2d');
   const scoreEl = document.getElementById('score');
@@ -378,24 +379,35 @@
   const ctaBtn  = document.getElementById('cta-btn');
 
   // ── Constants ─────────────────────────────────────────────
-  const BRICK_W   = 68;
-  const BRICK_H   = 28;
-  const BRICK_GAP = 4;
+  const BRICK_W   = 68, BRICK_H = 28, BRICK_GAP = 4;
   const ROWS      = 4;
   const GROUND_H  = 80;
-  const BALL_R    = 18;
-  const GRAVITY   = 0.6;
+  const BALL_R    = 14;
+  const BASE_SPD  = 10;
+  // Fist hitbox ellipse radii
+  const FIST_RX   = 38, FIST_RY = 28;
 
   // ── State ─────────────────────────────────────────────────
-  let bricks     = [];
-  let balls      = [];
-  let particles  = [];
-  let floaters   = [];
-  let score      = 0;
-  let gameActive = false;
-  let frame      = 0;
+  let bricks        = [];
+  let particles     = [];
+  let floaters      = [];
+  let score         = 0;
+  let gameActive    = false;
+  let frame         = 0;
+  let ballSpeed     = BASE_SPD;
+  let brickCooldown = 0;
 
-  // ── Canvas sizing ─────────────────────────────────────────
+  // ── Mouse ─────────────────────────────────────────────────
+  let mx = 400, my = 300;
+  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+
+  // ── Fist squash/stretch state ─────────────────────────────
+  let fistSX = 1, fistSY = 1, fistFlash = 0;
+
+  // ── Ball ──────────────────────────────────────────────────
+  const ball = { x: 0, y: 0, vx: 0, vy: 0, active: false };
+
+  // ── Canvas resize ─────────────────────────────────────────
   function resize() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -408,247 +420,338 @@
     bricks = [];
     const cols = Math.ceil(canvas.width / (BRICK_W + BRICK_GAP)) + 2;
     for (let row = 0; row < ROWS; row++) {
-      const offset = (row % 2 === 0) ? 0 : (BRICK_W + BRICK_GAP) / 2;
+      const offset = row % 2 === 0 ? 0 : (BRICK_W + BRICK_GAP) / 2;
       const y = canvas.height - GROUND_H - (row + 1) * (BRICK_H + BRICK_GAP);
       for (let col = -1; col < cols; col++) {
         bricks.push({
-          x: col * (BRICK_W + BRICK_GAP) - offset,
-          y,
+          x: col * (BRICK_W + BRICK_GAP) - offset, y,
           w: BRICK_W, h: BRICK_H,
-          alive: true,
-          hue: (Math.random() * 20) - 10,
+          alive: true, hue: Math.random() * 20 - 10,
         });
       }
     }
   }
 
-  function brickColor(b, lightness) {
-    return `hsl(${15 + b.hue}, 65%, ${lightness}%)`;
-  }
+  function brickCol(b, l) { return `hsl(${15 + b.hue},65%,${l}%)`; }
 
   function drawBrick(b) {
     if (!b.alive) return;
     const { x, y, w, h } = b;
-    ctx.fillStyle = brickColor(b, 45);
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = brickColor(b, 60);
-    ctx.fillRect(x, y, w, 5);
-    ctx.fillRect(x, y, 4, h);
-    ctx.fillStyle = brickColor(b, 32);
-    ctx.fillRect(x, y + h - 5, w, 5);
-    ctx.fillRect(x + w - 4, y, 4, h);
-    ctx.strokeStyle = '#5a2a10';
-    ctx.lineWidth = 1;
+    ctx.fillStyle = brickCol(b, 45); ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = brickCol(b, 60); ctx.fillRect(x, y, w, 5); ctx.fillRect(x, y, 4, h);
+    ctx.fillStyle = brickCol(b, 32); ctx.fillRect(x, y+h-5, w, 5); ctx.fillRect(x+w-4, y, 4, h);
+    ctx.strokeStyle = '#5a2a10'; ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   }
 
-  // ── Ball ──────────────────────────────────────────────────
-  function spawnBall(clickX) {
-    balls.push({ x: clickX, y: BALL_R + 5, vx: 0, vy: 1, r: BALL_R });
-    hintEl.style.display = 'none';
+  // ── Ball rendering ────────────────────────────────────────
+  function drawBall() {
+    const { x, y } = ball, r = BALL_R;
+    const glow = ctx.createRadialGradient(x, y, r*.1, x, y, r*2.6);
+    glow.addColorStop(0, 'rgba(255,160,0,0.6)');
+    glow.addColorStop(1, 'rgba(255,60,0,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r*2.6, 0, Math.PI*2); ctx.fill();
+    const body = ctx.createRadialGradient(x-r*.3, y-r*.35, r*.05, x, y, r);
+    body.addColorStop(0, '#ffb030'); body.addColorStop(.5, '#e03000'); body.addColorStop(1, '#6a1200');
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.42)';
+    ctx.beginPath(); ctx.ellipse(x-r*.28, y-r*.3, r*.28, r*.17, -0.7, 0, Math.PI*2); ctx.fill();
   }
 
-  function drawBall(b) {
-    const { x, y, r } = b;
-    // outer glow
-    const glow = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 2.2);
-    glow.addColorStop(0, 'rgba(255,120,0,0.5)');
-    glow.addColorStop(1, 'rgba(255,80,0,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(x, y, r * 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    // body
-    const body = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.05, x, y, r);
-    body.addColorStop(0,   '#ffb030');
-    body.addColorStop(0.45,'#e03000');
-    body.addColorStop(1,   '#6a1200');
-    ctx.fillStyle = body;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    // shine
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.beginPath();
-    ctx.ellipse(x - r * 0.28, y - r * 0.3, r * 0.28, r * 0.17, -0.7, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // ── Fist (jungle-themed cartoon) ─────────────────────────
+  function drawFist(cx, cy) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(fistSX, fistSY);
 
-  function updateBalls() {
-    balls = balls.filter(b => b.y - b.r < canvas.height + 40);
+    const skin   = fistFlash > 0 ? 'rgba(255,250,180,1)' : '#c87a3a';
+    const skinDk = '#7a3a10';
+    const line   = '#2a1000';
 
-    balls.forEach(ball => {
-      ball.vy += GRAVITY;
-      ball.x  += ball.vx;
-      ball.y  += ball.vy;
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(5, 36, 29, 9, 0, 0, Math.PI*2); ctx.fill();
 
-      // wall bounce
-      if (ball.x - ball.r < 0)             { ball.x = ball.r;            ball.vx =  Math.abs(ball.vx) || 1; }
-      if (ball.x + ball.r > canvas.width)  { ball.x = canvas.width - ball.r; ball.vx = -Math.abs(ball.vx) || -1; }
+    // Vine wristband
+    ctx.fillStyle = '#4a9c2a';
+    ctx.beginPath(); ctx.rect(-24, 16, 54, 17); ctx.fill();
+    ctx.strokeStyle = '#2d6b15'; ctx.lineWidth = 1.5; ctx.strokeRect(-24, 16, 54, 17);
+    ctx.strokeStyle = '#7de040'; ctx.lineWidth = 1.2;
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath(); ctx.moveTo(-24+i*11, 16); ctx.lineTo(-24+i*11-7, 33); ctx.stroke();
+    }
 
-      // brick collision — check topmost brick the ball enters
-      for (let i = bricks.length - 1; i >= 0; i--) {
-        const br = bricks[i];
-        if (!br.alive) continue;
-
-        // broad phase — is ball's column overlapping this brick?
-        if (ball.x + ball.r < br.x) continue;
-        if (ball.x - ball.r > br.x + br.w) continue;
-        if (ball.y + ball.r < br.y) continue;
-        if (ball.y - ball.r > br.y + br.h) continue;
-
-        // hit!
-        br.alive = false;
-        score += 10;
-        scoreEl.textContent = score;
-        addFloater(br.x + br.w / 2, br.y, '+10');
-        spawnExplosion(br.x + br.w / 2, br.y + br.h / 2, brickColor(br, 45));
-
-        // push ball just below the destroyed brick so it keeps falling
-        ball.y  = br.y + br.h + ball.r + 1;
-        ball.vy = Math.abs(ball.vy) * 0.9 + 2;
-        ball.vx *= 0.8;
-        break; // one brick per frame is plenty
-      }
-
-      // trail
-      if (frame % 2 === 0 && ball.vy > 2) {
-        particles.push({
-          x: ball.x, y: ball.y,
-          vx: (Math.random() - 0.5) * 1.5,
-          vy: (Math.random() - 0.5) * 1.5,
-          r: ball.r * (0.3 + Math.random() * 0.4),
-          life: 0.55, decay: 0.06,
-          color: 'rgba(255,120,20,',
-          type: 'trail',
-        });
-      }
+    // Knuckle bumps
+    const knX = [-19, -6, 7, 20];
+    knX.forEach(kx => {
+      ctx.fillStyle = skin; ctx.strokeStyle = line; ctx.lineWidth = 2.3;
+      ctx.beginPath(); ctx.arc(kx, -17, 10, Math.PI, 0, false); ctx.fill(); ctx.stroke();
     });
+
+    // Palm body
+    ctx.fillStyle = skin; ctx.strokeStyle = line; ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(-28, 16); ctx.lineTo(-32, -2); ctx.lineTo(-25, -15);
+    ctx.lineTo(25, -15); ctx.lineTo(32, -2);  ctx.lineTo(28, 16);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    // Finger dividers
+    ctx.strokeStyle = skinDk; ctx.lineWidth = 1.5;
+    [-12, 0, 12].forEach(lx => {
+      ctx.beginPath(); ctx.moveTo(lx, -15); ctx.lineTo(lx+1, 16); ctx.stroke();
+    });
+
+    // Knuckle shading
+    knX.forEach(kx => {
+      ctx.strokeStyle = 'rgba(80,30,0,0.45)'; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.arc(kx, -15, 7, Math.PI*.25, Math.PI*.75); ctx.stroke();
+    });
+
+    // Thumb
+    ctx.fillStyle = skin; ctx.strokeStyle = line; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.ellipse(-34, 2, 13, 9, -0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = skinDk; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(-36, 1, 7, Math.PI*.8, Math.PI*1.5); ctx.stroke();
+
+    // Leaf accent
+    ctx.fillStyle = '#3ad630'; ctx.strokeStyle = '#1e8c18'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.ellipse(28, -24, 11, 6, 0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#2ab020'; ctx.lineWidth = 0.9;
+    ctx.beginPath(); ctx.moveTo(19, -22); ctx.lineTo(35, -26); ctx.stroke();
+
+    // Hit flash ring
+    if (fistFlash > 0) {
+      ctx.strokeStyle = `rgba(255,240,80,${fistFlash})`;
+      ctx.lineWidth = 4 * fistFlash;
+      ctx.beginPath(); ctx.arc(0, 0, 44 + (1-fistFlash)*18, 0, Math.PI*2); ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   // ── Particles ─────────────────────────────────────────────
   function spawnExplosion(x, y, color) {
-    // debris chunks
     for (let i = 0; i < 32; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 2.5 + Math.random() * 7;
-      particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 3,
-        r: 3 + Math.random() * 6,
-        life: 1, decay: 0.022 + Math.random() * 0.03,
-        color,
-        type: Math.random() < 0.45 ? 'star' : 'circle',
-      });
+      const a = Math.random()*Math.PI*2, s = 2.5+Math.random()*7.5;
+      particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s-3,
+        r:3+Math.random()*6, life:1, decay:.022+Math.random()*.03,
+        color, type: Math.random()<.4?'star':'circle' });
     }
-    // shockwave
-    particles.push({ x, y, vx:0, vy:0, r:0, life:1, decay:0.06, color:'rgba(255,200,80,0.9)', type:'ring', maxR:70 });
-    // dust
-    for (let i = 0; i < 7; i++) {
-      particles.push({
-        x: x + (Math.random()-0.5)*30, y: y + (Math.random()-0.5)*12,
-        vx:(Math.random()-0.5)*2, vy:-1-Math.random()*2,
-        r: 10+Math.random()*16, life:1, decay:0.018+Math.random()*0.012,
-        color:'rgba(190,140,80,', type:'dust',
-      });
+    particles.push({ x, y, vx:0, vy:0, r:0, life:1, decay:.055,
+      color:'rgba(255,200,80,.9)', type:'ring', maxR:68 });
+    for (let i = 0; i < 8; i++) {
+      particles.push({ x:x+(Math.random()-.5)*32, y:y+(Math.random()-.5)*12,
+        vx:(Math.random()-.5)*2, vy:-1-Math.random()*2.5,
+        r:10+Math.random()*16, life:1, decay:.017+Math.random()*.013,
+        color:'rgba(190,140,80,', type:'dust' });
+    }
+  }
+
+  function spawnFistSpark(x, y) {
+    for (let i = 0; i < 14; i++) {
+      const a = -(Math.PI*.5)+(Math.random()-.5)*Math.PI, s = 4+Math.random()*7;
+      particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+        r:2+Math.random()*4, life:.75, decay:.07+Math.random()*.05,
+        color:'rgba(255,240,100,', type:'trail' });
     }
   }
 
   function updateParticles() {
     particles.forEach(p => {
-      if (p.type !== 'ring') {
-        p.x  += p.vx;
-        p.y  += p.vy;
-        if (p.type !== 'dust') p.vy += 0.2;
-        p.vx *= 0.97;
-      }
+      if (p.type !== 'ring') { p.x+=p.vx; p.y+=p.vy; if(p.type!=='dust') p.vy+=.18; p.vx*=.97; }
       p.life -= p.decay;
     });
     particles = particles.filter(p => p.life > 0);
   }
 
   function drawParticle(p) {
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.save(); ctx.globalAlpha = Math.max(0, p.life);
     if (p.type === 'ring') {
-      const rad = p.maxR * (1 - p.life);
-      ctx.strokeStyle = p.color;
-      ctx.lineWidth = 5 * p.life;
+      const rad = p.maxR*(1-p.life);
+      ctx.strokeStyle=p.color; ctx.lineWidth=5*p.life;
+      ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0,rad),0,Math.PI*2); ctx.stroke();
+    } else if (p.type==='dust'||p.type==='trail') {
+      ctx.fillStyle = p.color+Math.max(0,p.life).toFixed(2)+')';
+      ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(.1,p.r*p.life),0,Math.PI*2); ctx.fill();
+    } else if (p.type==='star') {
+      ctx.fillStyle=p.color; ctx.translate(p.x,p.y); ctx.rotate(p.life*6);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(0, rad), 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (p.type === 'dust' || p.type === 'trail') {
-      ctx.fillStyle = p.color + Math.max(0, p.life).toFixed(2) + ')';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(0.1, p.r * (p.type === 'dust' ? (1.3 - p.life * 0.3) : p.life)), 0, Math.PI * 2);
-      ctx.fill();
-    } else if (p.type === 'star') {
-      ctx.fillStyle = p.color;
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.life * 6);
-      const or = p.r, ir = p.r * 0.4;
-      ctx.beginPath();
-      for (let i = 0; i < 5; i++) {
-        const a = i * Math.PI * 2 / 5 - Math.PI / 2;
-        const bA = a + Math.PI / 5;
-        i === 0 ? ctx.moveTo(Math.cos(a)*or, Math.sin(a)*or) : ctx.lineTo(Math.cos(a)*or, Math.sin(a)*or);
-        ctx.lineTo(Math.cos(bA)*ir, Math.sin(bA)*ir);
+      for (let i=0;i<5;i++) {
+        const a=i*Math.PI*2/5-Math.PI/2, bA=a+Math.PI/5;
+        i===0?ctx.moveTo(Math.cos(a)*p.r,Math.sin(a)*p.r):ctx.lineTo(Math.cos(a)*p.r,Math.sin(a)*p.r);
+        ctx.lineTo(Math.cos(bA)*p.r*.4,Math.sin(bA)*p.r*.4);
       }
-      ctx.closePath();
-      ctx.fill();
+      ctx.closePath(); ctx.fill();
     } else {
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(0.1, p.r * p.life), 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle=p.color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(.1,p.r*p.life),0,Math.PI*2); ctx.fill();
     }
     ctx.restore();
   }
 
-  // ── Floaters ──────────────────────────────────────────────
-  function addFloater(x, y, text) {
-    floaters.push({ x, y, text, life: 1, decay: 0.016 });
-  }
+  // ── Score floaters ────────────────────────────────────────
+  function addFloater(x, y, text) { floaters.push({ x, y, text, life:1, decay:.016 }); }
 
   function updateFloaters() {
-    floaters.forEach(f => { f.y -= 1.2; f.life -= f.decay; });
+    floaters.forEach(f => { f.y-=1.3; f.life-=f.decay; });
     floaters = floaters.filter(f => f.life > 0);
   }
 
   function drawFloaters() {
     floaters.forEach(f => {
-      ctx.save();
-      ctx.globalAlpha = f.life;
-      ctx.font = 'bold 22px Georgia';
-      ctx.textAlign = 'center';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#5a2a00';
-      ctx.fillStyle   = '#FFD700';
-      ctx.strokeText(f.text, f.x, f.y);
-      ctx.fillText(f.text, f.x, f.y);
-      ctx.restore();
+      ctx.save(); ctx.globalAlpha=f.life;
+      ctx.font='bold 22px Georgia'; ctx.textAlign='center';
+      ctx.lineWidth=3; ctx.strokeStyle='#5a2a00'; ctx.fillStyle='#FFD700';
+      ctx.strokeText(f.text,f.x,f.y); ctx.fillText(f.text,f.x,f.y); ctx.restore();
     });
   }
 
-  // ── Play button ───────────────────────────────────────────
-  ctaBtn.addEventListener('click', () => {
-    ctaBtn.style.display = 'none';
-    hintEl.style.display = 'block';
-    bricks.forEach(b => { b.alive = true; });
-    balls      = [];
-    particles  = [];
-    floaters   = [];
-    score      = 0;
-    scoreEl.textContent = '0';
-    gameActive = true;
-  });
+  // ── Physics helpers ───────────────────────────────────────
+  function normSpeed() {
+    const s = Math.hypot(ball.vx, ball.vy);
+    if (s > 0) { ball.vx=(ball.vx/s)*ballSpeed; ball.vy=(ball.vy/s)*ballSpeed; }
+  }
 
-  // ── Click-to-drop — listen on document so nothing blocks it
-  document.addEventListener('click', (e) => {
-    if (!gameActive) return;
-    if (e.target === ctaBtn) return;
-    spawnBall(e.clientX);
+  // ── Fist collision — ellipse paddle ──────────────────────
+  // Ball approaches from above (vy>0), fist sends it back down toward bricks.
+  // Angle is determined by horizontal hit offset, giving breakout-style aiming.
+  function checkFistHit() {
+    const ex = FIST_RX + BALL_R, ey = FIST_RY + BALL_R;
+    const dx = (ball.x - mx) / ex, dy = (ball.y - my) / ey;
+    if (dx*dx + dy*dy > 1) return false;
+
+    // Horizontal offset −1..1 maps to bounce angle
+    const offset   = Math.max(-1, Math.min(1, (ball.x - mx) / FIST_RX));
+    const maxAng   = Math.PI * 0.40;
+    const ang      = offset * maxAng;
+
+    // Always deflect ball downward (toward bricks)
+    ball.vx = Math.sin(ang) * ballSpeed;
+    ball.vy = Math.max(4, Math.cos(ang) * ballSpeed);
+
+    // Eject ball cleanly below fist
+    ball.x = mx + Math.sin(ang) * (FIST_RX + BALL_R + 2);
+    ball.y = my + (FIST_RY + BALL_R + 3);
+
+    fistSX = 1.4; fistSY = 0.65; fistFlash = 1;
+    spawnFistSpark(ball.x, ball.y - 6);
+    return true;
+  }
+
+  // ── Brick collision — one brick, face-accurate, CCD-safe ──
+  function checkBrickHit() {
+    if (brickCooldown > 0) { brickCooldown--; return false; }
+
+    // Find the overlapping brick with smallest distance (closest hit)
+    let best = null, bestDist = Infinity;
+    for (const br of bricks) {
+      if (!br.alive) continue;
+      const nearX = Math.max(br.x, Math.min(ball.x, br.x+br.w));
+      const nearY = Math.max(br.y, Math.min(ball.y, br.y+br.h));
+      const dx = ball.x-nearX, dy = ball.y-nearY;
+      const d = dx*dx + dy*dy;
+      if (d < BALL_R*BALL_R && d < bestDist) { bestDist=d; best=br; }
+    }
+    if (!best) return false;
+
+    // Determine collision face via axis penetration depth
+    const cx = best.x+best.w*.5, cy = best.y+best.h*.5;
+    const dx = ball.x-cx,        dy = ball.y-cy;
+    const penX = (best.w*.5+BALL_R) - Math.abs(dx);
+    const penY = (best.h*.5+BALL_R) - Math.abs(dy);
+
+    if (penX < penY) {
+      // Side hit
+      ball.vx = dx>0 ? Math.abs(ball.vx) : -Math.abs(ball.vx);
+      ball.x  = cx + (dx>0?1:-1)*(best.w*.5+BALL_R+1);
+    } else {
+      // Top / bottom hit — always send ball back toward fist (upward)
+      ball.vy = -Math.abs(ball.vy);
+      ball.y  = cy + (dy>0?1:-1)*(best.h*.5+BALL_R+1);
+    }
+    normSpeed();
+
+    // Destroy
+    best.alive = false;
+    score += 10;
+    scoreEl.textContent = score;
+    addFloater(best.x+best.w/2, best.y, '+10');
+    spawnExplosion(best.x+best.w/2, best.y+best.h/2, brickCol(best, 45));
+
+    ballSpeed      = Math.min(ballSpeed * 1.05, BASE_SPD * 2.4);
+    brickCooldown  = 10;
+    return true;
+  }
+
+  // ── Ball update (sub-stepped CCD) ────────────────────────
+  function updateBall() {
+    if (!ball.active) return;
+
+    const steps = Math.max(1, Math.ceil(Math.hypot(ball.vx, ball.vy) / 8));
+    const svx = ball.vx/steps, svy = ball.vy/steps;
+
+    for (let s = 0; s < steps; s++) {
+      ball.x += svx; ball.y += svy;
+
+      // Walls
+      if (ball.x-BALL_R < 0)            { ball.x=BALL_R;              ball.vx= Math.abs(ball.vx); normSpeed(); }
+      if (ball.x+BALL_R > canvas.width) { ball.x=canvas.width-BALL_R; ball.vx=-Math.abs(ball.vx); normSpeed(); }
+      if (ball.y-BALL_R < 0)            { ball.y=BALL_R;              ball.vy= Math.abs(ball.vy); normSpeed(); }
+
+      // Off bottom → relaunch
+      if (ball.y > canvas.height + 60) { launchBall(); return; }
+
+      // Fist has priority over bricks
+      if (checkFistHit()) break;
+      if (checkBrickHit()) break;
+    }
+
+    // Fire trail
+    if (frame % 2 === 0) {
+      particles.push({ x:ball.x, y:ball.y,
+        vx:(Math.random()-.5), vy:(Math.random()-.5),
+        r:BALL_R*(.3+Math.random()*.4), life:.5, decay:.055,
+        color:'rgba(255,120,20,', type:'trail' });
+    }
+  }
+
+  // ── Launch ball from fist position ────────────────────────
+  function launchBall() {
+    ballSpeed  = BASE_SPD;
+    ball.active = true;
+    ball.x = mx;
+    ball.y = my + FIST_RY + BALL_R + 4;
+
+    // Aim toward a random column in the brick wall, always downward
+    const topBrickY = canvas.height - GROUND_H - ROWS*(BRICK_H+BRICK_GAP) - 20;
+    const tx = canvas.width * (.25 + Math.random()*.5);
+    const ty = topBrickY;
+    const dist = Math.hypot(tx-ball.x, ty-ball.y) || 1;
+    ball.vx = (tx-ball.x)/dist * ballSpeed;
+    ball.vy = Math.abs((ty-ball.y)/dist * ballSpeed); // always downward
+    brickCooldown = 0;
+  }
+
+  // ── Fist animation decay ──────────────────────────────────
+  function updateFist() {
+    fistSX   += (1-fistSX) * 0.22;
+    fistSY   += (1-fistSY) * 0.22;
+    fistFlash = Math.max(0, fistFlash - 0.08);
+    if (Math.abs(fistSX-1) < .002) fistSX = 1;
+    if (Math.abs(fistSY-1) < .002) fistSY = 1;
+  }
+
+  // ── Buttons ───────────────────────────────────────────────
+  ctaBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    ctaBtn.style.display = 'none';
+    hintEl.style.display = 'none';
+    bricks.forEach(b => { b.alive = true; });
+    particles = []; floaters = [];
+    score = 0; scoreEl.textContent = '0';
+    ballSpeed  = BASE_SPD;
+    gameActive = true;
+    launchBall();
   });
 
   // ── Main loop ─────────────────────────────────────────────
@@ -656,15 +759,17 @@
     frame++;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    updateBalls();
+    if (gameActive) updateBall();
+    updateFist();
     updateParticles();
     updateFloaters();
 
     bricks.forEach(drawBrick);
-    particles.filter(p => p.type === 'trail' || p.type === 'dust').forEach(drawParticle);
-    balls.forEach(drawBall);
-    particles.filter(p => p.type !== 'trail' && p.type !== 'dust').forEach(drawParticle);
+    particles.filter(p => p.type==='trail'||p.type==='dust').forEach(drawParticle);
+    if (ball.active) drawBall();
+    particles.filter(p => p.type!=='trail'&&p.type!=='dust').forEach(drawParticle);
     drawFloaters();
+    drawFist(mx, my);   // always drawn last — replaces cursor
 
     requestAnimationFrame(loop);
   }
