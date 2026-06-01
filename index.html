@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jungle Quest — Map Adventure Game</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      cursor: crosshair;
+      user-select: none;
+    }
+
+    /* ── Sky ── */
+    #sky {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg,
+        #87CEEB 0%,
+        #b0e0f7 40%,
+        #d4f0a0 70%,
+        #5aad3a 100%
+      );
+      z-index: 0;
+    }
+
+    /* ── Sun ── */
+    .sun {
+      position: absolute;
+      top: 40px;
+      right: 120px;
+      width: 80px;
+      height: 80px;
+      background: radial-gradient(circle, #fff9a0 30%, #FFD700 70%, transparent 100%);
+      border-radius: 50%;
+      box-shadow: 0 0 60px 30px rgba(255,220,0,0.4);
+      z-index: 1;
+      animation: sunPulse 4s ease-in-out infinite;
+    }
+    @keyframes sunPulse {
+      0%,100% { transform: scale(1); box-shadow: 0 0 60px 30px rgba(255,220,0,0.4); }
+      50%      { transform: scale(1.06); box-shadow: 0 0 80px 40px rgba(255,220,0,0.5); }
+    }
+
+    /* ── Clouds ── */
+    .cloud {
+      position: absolute;
+      background: white;
+      border-radius: 50px;
+      opacity: 0.88;
+      z-index: 2;
+    }
+    .cloud::before, .cloud::after {
+      content: '';
+      position: absolute;
+      background: white;
+      border-radius: 50%;
+    }
+    .cloud-1 { width:140px; height:50px; top:60px; left:-160px; animation: cloudDrift 28s linear infinite; }
+    .cloud-1::before { width:70px; height:70px; top:-35px; left:20px; }
+    .cloud-1::after  { width:55px; height:55px; top:-25px; left:65px; }
+
+    .cloud-2 { width:100px; height:38px; top:100px; left:-120px; animation: cloudDrift 38s linear infinite 8s; }
+    .cloud-2::before { width:55px; height:55px; top:-28px; left:12px; }
+    .cloud-2::after  { width:40px; height:40px; top:-18px; left:52px; }
+
+    .cloud-3 { width:120px; height:44px; top:35px; left:-140px; animation: cloudDrift 50s linear infinite 20s; }
+    .cloud-3::before { width:62px; height:62px; top:-32px; left:15px; }
+    .cloud-3::after  { width:48px; height:48px; top:-22px; left:60px; }
+
+    @keyframes cloudDrift {
+      from { left: -200px; }
+      to   { left: 110vw; }
+    }
+
+    /* ── Jungle trees – back layer ── */
+    #trees-back {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 65%;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    /* ── Jungle trees – front layer ── */
+    #trees-front {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 55%;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* ── Ground ── */
+    #ground {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 80px;
+      background: linear-gradient(180deg, #5aad3a 0%, #3d8c2a 30%, #2d6b1e 100%);
+      z-index: 6;
+    }
+    #ground::before {
+      content: '';
+      position: absolute;
+      top: -12px;
+      left: 0;
+      right: 0;
+      height: 24px;
+      background: radial-gradient(ellipse 30px 14px at center, #6dcf48 50%, transparent 100%);
+      background-size: 60px 24px;
+      background-repeat: repeat-x;
+    }
+
+    /* ── Brick wall ── */
+    #brick-container {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 7;
+      pointer-events: none;
+    }
+
+    /* ── Canvas ── */
+    #gameCanvas {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+    }
+
+    /* ── HUD ── */
+    #hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    #title-block {
+      position: absolute;
+      top: 36px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      pointer-events: none;
+    }
+    #title-block h1 {
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 900;
+      color: #fff;
+      text-shadow:
+        3px 3px 0 #2d6b1e,
+        -2px -2px 0 #2d6b1e,
+        2px -2px 0 #2d6b1e,
+        -2px 2px 0 #2d6b1e,
+        0 6px 20px rgba(0,0,0,0.5);
+      letter-spacing: 2px;
+      white-space: nowrap;
+    }
+    #title-block p {
+      font-size: clamp(0.85rem, 2vw, 1.2rem);
+      color: #fff9a0;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+      margin-top: 6px;
+      letter-spacing: 1px;
+    }
+
+    #cta-btn {
+      position: absolute;
+      bottom: 140px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      background: linear-gradient(180deg, #FFD700, #e6a000);
+      border: 4px solid #8B5E00;
+      border-radius: 14px;
+      padding: 14px 44px;
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: #3a2000;
+      cursor: pointer;
+      letter-spacing: 1px;
+      box-shadow: 0 6px 0 #8B5E00, 0 10px 20px rgba(0,0,0,0.4);
+      transition: transform 0.1s, box-shadow 0.1s;
+      text-transform: uppercase;
+      pointer-events: all;
+    }
+    #cta-btn:hover { transform: translateX(-50%) translateY(-3px); box-shadow: 0 9px 0 #8B5E00, 0 14px 24px rgba(0,0,0,0.4); }
+    #cta-btn:active { transform: translateX(-50%) translateY(3px); box-shadow: 0 3px 0 #8B5E00, 0 6px 14px rgba(0,0,0,0.3); }
+
+    #score-box {
+      position: absolute;
+      top: 20px;
+      right: 24px;
+      background: rgba(0,0,0,0.45);
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 12px;
+      padding: 8px 18px;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: bold;
+      letter-spacing: 1px;
+      z-index: 20;
+      pointer-events: none;
+    }
+    #score-box span { color: #FFD700; font-size: 1.3rem; }
+
+    #hint {
+      position: absolute;
+      bottom: 190px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.75);
+      font-size: 0.9rem;
+      letter-spacing: 1px;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+      z-index: 20;
+      pointer-events: none;
+      animation: hintFade 3s ease-in-out infinite;
+      white-space: nowrap;
+    }
+    @keyframes hintFade {
+      0%,100% { opacity: 0.5; }
+      50%      { opacity: 1; }
+    }
+
+    /* ── Vines ── */
+    .vine {
+      position: absolute;
+      top: 0;
+      width: 6px;
+      background: linear-gradient(180deg, transparent, #2d8c2a 10%, #1a6b15);
+      border-radius: 3px;
+      z-index: 4;
+      transform-origin: top center;
+    }
+    .vine::before {
+      content: '🌿';
+      position: absolute;
+      font-size: 1.4rem;
+    }
+
+    /* ── Butterflies ── */
+    .butterfly {
+      position: absolute;
+      font-size: 1.6rem;
+      z-index: 8;
+      animation: butterflyFloat linear infinite;
+      pointer-events: none;
+    }
+    @keyframes butterflyFloat {
+      0%   { transform: translate(0,0) rotate(0deg); }
+      25%  { transform: translate(30px,-20px) rotate(5deg); }
+      50%  { transform: translate(-10px,-35px) rotate(-5deg); }
+      75%  { transform: translate(-30px,-15px) rotate(8deg); }
+      100% { transform: translate(0,0) rotate(0deg); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Sky -->
+<div id="sky"></div>
+
+<!-- Sun -->
+<div class="sun"></div>
+
+<!-- Clouds -->
+<div class="cloud cloud-1"></div>
+<div class="cloud cloud-2"></div>
+<div class="cloud cloud-3"></div>
+
+<!-- Back trees SVG -->
+<svg id="trees-back" viewBox="0 0 1440 500" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Far background foliage -->
+  <ellipse cx="80"  cy="420" rx="90"  ry="130" fill="#3aad2a" opacity="0.6"/>
+  <ellipse cx="220" cy="400" rx="110" ry="150" fill="#2d9a22" opacity="0.6"/>
+  <ellipse cx="400" cy="430" rx="95"  ry="120" fill="#3aad2a" opacity="0.6"/>
+  <ellipse cx="600" cy="390" rx="130" ry="160" fill="#269020" opacity="0.6"/>
+  <ellipse cx="800" cy="420" rx="100" ry="135" fill="#3aad2a" opacity="0.6"/>
+  <ellipse cx="1000" cy="400" rx="115" ry="148" fill="#2d9a22" opacity="0.6"/>
+  <ellipse cx="1200" cy="425" rx="95"  ry="125" fill="#3aad2a" opacity="0.6"/>
+  <ellipse cx="1380" cy="410" rx="100" ry="140" fill="#269020" opacity="0.6"/>
+  <!-- Trunks -->
+  <rect x="72"  y="480" width="18" height="60" fill="#6b3e1e" rx="4"/>
+  <rect x="213" y="470" width="20" height="70" fill="#5a3418" rx="4"/>
+  <rect x="393" y="482" width="18" height="58" fill="#6b3e1e" rx="4"/>
+  <rect x="592" y="465" width="22" height="75" fill="#5a3418" rx="4"/>
+  <rect x="792" y="478" width="18" height="62" fill="#6b3e1e" rx="4"/>
+  <rect x="993" y="468" width="20" height="72" fill="#5a3418" rx="4"/>
+  <rect x="1193" y="481" width="18" height="59" fill="#6b3e1e" rx="4"/>
+  <rect x="1372" y="472" width="20" height="68" fill="#5a3418" rx="4"/>
+</svg>
+
+<!-- Front trees SVG -->
+<svg id="trees-front" viewBox="0 0 1440 440" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Palm left -->
+  <rect x="45" y="300" width="26" height="180" fill="#7a4d20" rx="6"/>
+  <ellipse cx="58"  cy="290" rx="80" ry="55" fill="#28a020" transform="rotate(-20,58,290)"/>
+  <ellipse cx="58"  cy="285" rx="75" ry="50" fill="#30bf26" transform="rotate(10,58,285)"/>
+  <ellipse cx="58"  cy="280" rx="70" ry="45" fill="#3ad630" transform="rotate(-5,58,280)"/>
+  <!-- Palm right -->
+  <rect x="1370" y="280" width="26" height="200" fill="#7a4d20" rx="6"/>
+  <ellipse cx="1383" cy="268" rx="80" ry="55" fill="#28a020" transform="rotate(20,1383,268)"/>
+  <ellipse cx="1383" cy="263" rx="75" ry="50" fill="#30bf26" transform="rotate(-10,1383,263)"/>
+  <ellipse cx="1383" cy="258" rx="70" ry="45" fill="#3ad630" transform="rotate(5,1383,258)"/>
+  <!-- Mid big tree -->
+  <rect x="160" y="330" width="30" height="150" fill="#6b3e1e" rx="6"/>
+  <ellipse cx="175" cy="310" rx="100" ry="70" fill="#22951a"/>
+  <ellipse cx="175" cy="290" rx="85"  ry="65" fill="#2ab020"/>
+  <ellipse cx="175" cy="275" rx="70"  ry="55" fill="#33c92a"/>
+  <!-- Highlight spots -->
+  <ellipse cx="155" cy="268" rx="22" ry="18" fill="#5aed4a" opacity="0.5"/>
+  <!-- Right mid tree -->
+  <rect x="1240" y="310" width="28" height="170" fill="#6b3e1e" rx="6"/>
+  <ellipse cx="1254" cy="290" rx="95" ry="68" fill="#22951a"/>
+  <ellipse cx="1254" cy="272" rx="80" ry="62" fill="#2ab020"/>
+  <ellipse cx="1254" cy="258" rx="66" ry="52" fill="#33c92a"/>
+  <ellipse cx="1236" cy="251" rx="20" ry="16" fill="#5aed4a" opacity="0.5"/>
+  <!-- Small shrubs -->
+  <ellipse cx="330" cy="410" rx="65" ry="40" fill="#2ab020"/>
+  <ellipse cx="500" cy="418" rx="55" ry="35" fill="#30bf26"/>
+  <ellipse cx="720" cy="405" rx="72" ry="44" fill="#22951a"/>
+  <ellipse cx="920" cy="415" rx="60" ry="38" fill="#2ab020"/>
+  <ellipse cx="1100" cy="410" rx="68" ry="42" fill="#30bf26"/>
+  <!-- Ferns / leaves -->
+  <path d="M600,440 Q610,390 640,400 Q620,420 600,440Z" fill="#1e8c18"/>
+  <path d="M800,440 Q790,388 820,398 Q806,425 800,440Z" fill="#1e8c18"/>
+  <path d="M400,440 Q415,392 440,402 Q420,428 400,440Z" fill="#1e8c18"/>
+</svg>
+
+<!-- Ground -->
+<div id="ground"></div>
+
+<!-- Brick container (filled by JS) -->
+<div id="brick-container"></div>
+
+<!-- Game canvas -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- UI -->
+<div id="hud">
+  <div id="title-block">
+    <h1>🗺️ JUNGLE QUEST</h1>
+    <p>An Interactive Map Adventure</p>
+  </div>
+</div>
+
+<div id="score-box">BRICKS SMASHED: <span id="score">0</span></div>
+<div id="hint" style="display:none">Click anywhere to drop the ball!</div>
+<button id="cta-btn">Play Now</button>
+
+<!-- Butterflies -->
+<div class="butterfly" style="top:38%;left:12%;animation-duration:6s;animation-delay:0s">🦋</div>
+<div class="butterfly" style="top:28%;left:75%;animation-duration:8s;animation-delay:2s">🦋</div>
+<div class="butterfly" style="top:50%;left:55%;animation-duration:7s;animation-delay:4s">🦋</div>
+<div class="butterfly" style="top:35%;left:40%;animation-duration:9s;animation-delay:1s">🐦</div>
+
+<script>
+(function () {
+  const canvas  = document.getElementById('gameCanvas');
+  const ctx     = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const hintEl  = document.getElementById('hint');
+  const ctaBtn  = document.getElementById('cta-btn');
+
+  // ── Constants ─────────────────────────────────────────────
+  const BRICK_W   = 68;
+  const BRICK_H   = 28;
+  const BRICK_GAP = 4;
+  const ROWS      = 4;
+  const GROUND_H  = 80;
+  const BALL_R    = 18;
+  const GRAVITY   = 0.6;
+
+  // ── State ─────────────────────────────────────────────────
+  let bricks     = [];
+  let balls      = [];
+  let particles  = [];
+  let floaters   = [];
+  let score      = 0;
+  let gameActive = false;
+  let frame      = 0;
+
+  // ── Canvas sizing ─────────────────────────────────────────
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    buildBricks();
+  }
+  window.addEventListener('resize', resize);
+
+  // ── Bricks ────────────────────────────────────────────────
+  function buildBricks() {
+    bricks = [];
+    const cols = Math.ceil(canvas.width / (BRICK_W + BRICK_GAP)) + 2;
+    for (let row = 0; row < ROWS; row++) {
+      const offset = (row % 2 === 0) ? 0 : (BRICK_W + BRICK_GAP) / 2;
+      const y = canvas.height - GROUND_H - (row + 1) * (BRICK_H + BRICK_GAP);
+      for (let col = -1; col < cols; col++) {
+        bricks.push({
+          x: col * (BRICK_W + BRICK_GAP) - offset,
+          y,
+          w: BRICK_W, h: BRICK_H,
+          alive: true,
+          hue: (Math.random() * 20) - 10,
+        });
+      }
+    }
+  }
+
+  function brickColor(b, lightness) {
+    return `hsl(${15 + b.hue}, 65%, ${lightness}%)`;
+  }
+
+  function drawBrick(b) {
+    if (!b.alive) return;
+    const { x, y, w, h } = b;
+    ctx.fillStyle = brickColor(b, 45);
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = brickColor(b, 60);
+    ctx.fillRect(x, y, w, 5);
+    ctx.fillRect(x, y, 4, h);
+    ctx.fillStyle = brickColor(b, 32);
+    ctx.fillRect(x, y + h - 5, w, 5);
+    ctx.fillRect(x + w - 4, y, 4, h);
+    ctx.strokeStyle = '#5a2a10';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  }
+
+  // ── Ball ──────────────────────────────────────────────────
+  function spawnBall(clickX) {
+    balls.push({ x: clickX, y: BALL_R + 5, vx: 0, vy: 1, r: BALL_R });
+    hintEl.style.display = 'none';
+  }
+
+  function drawBall(b) {
+    const { x, y, r } = b;
+    // outer glow
+    const glow = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 2.2);
+    glow.addColorStop(0, 'rgba(255,120,0,0.5)');
+    glow.addColorStop(1, 'rgba(255,80,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    // body
+    const body = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.05, x, y, r);
+    body.addColorStop(0,   '#ffb030');
+    body.addColorStop(0.45,'#e03000');
+    body.addColorStop(1,   '#6a1200');
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // shine
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.28, y - r * 0.3, r * 0.28, r * 0.17, -0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function updateBalls() {
+    balls = balls.filter(b => b.y - b.r < canvas.height + 40);
+
+    balls.forEach(ball => {
+      ball.vy += GRAVITY;
+      ball.x  += ball.vx;
+      ball.y  += ball.vy;
+
+      // wall bounce
+      if (ball.x - ball.r < 0)             { ball.x = ball.r;            ball.vx =  Math.abs(ball.vx) || 1; }
+      if (ball.x + ball.r > canvas.width)  { ball.x = canvas.width - ball.r; ball.vx = -Math.abs(ball.vx) || -1; }
+
+      // brick collision — check topmost brick the ball enters
+      for (let i = bricks.length - 1; i >= 0; i--) {
+        const br = bricks[i];
+        if (!br.alive) continue;
+
+        // broad phase — is ball's column overlapping this brick?
+        if (ball.x + ball.r < br.x) continue;
+        if (ball.x - ball.r > br.x + br.w) continue;
+        if (ball.y + ball.r < br.y) continue;
+        if (ball.y - ball.r > br.y + br.h) continue;
+
+        // hit!
+        br.alive = false;
+        score += 10;
+        scoreEl.textContent = score;
+        addFloater(br.x + br.w / 2, br.y, '+10');
+        spawnExplosion(br.x + br.w / 2, br.y + br.h / 2, brickColor(br, 45));
+
+        // push ball just below the destroyed brick so it keeps falling
+        ball.y  = br.y + br.h + ball.r + 1;
+        ball.vy = Math.abs(ball.vy) * 0.9 + 2;
+        ball.vx *= 0.8;
+        break; // one brick per frame is plenty
+      }
+
+      // trail
+      if (frame % 2 === 0 && ball.vy > 2) {
+        particles.push({
+          x: ball.x, y: ball.y,
+          vx: (Math.random() - 0.5) * 1.5,
+          vy: (Math.random() - 0.5) * 1.5,
+          r: ball.r * (0.3 + Math.random() * 0.4),
+          life: 0.55, decay: 0.06,
+          color: 'rgba(255,120,20,',
+          type: 'trail',
+        });
+      }
+    });
+  }
+
+  // ── Particles ─────────────────────────────────────────────
+  function spawnExplosion(x, y, color) {
+    // debris chunks
+    for (let i = 0; i < 32; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2.5 + Math.random() * 7;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 3,
+        r: 3 + Math.random() * 6,
+        life: 1, decay: 0.022 + Math.random() * 0.03,
+        color,
+        type: Math.random() < 0.45 ? 'star' : 'circle',
+      });
+    }
+    // shockwave
+    particles.push({ x, y, vx:0, vy:0, r:0, life:1, decay:0.06, color:'rgba(255,200,80,0.9)', type:'ring', maxR:70 });
+    // dust
+    for (let i = 0; i < 7; i++) {
+      particles.push({
+        x: x + (Math.random()-0.5)*30, y: y + (Math.random()-0.5)*12,
+        vx:(Math.random()-0.5)*2, vy:-1-Math.random()*2,
+        r: 10+Math.random()*16, life:1, decay:0.018+Math.random()*0.012,
+        color:'rgba(190,140,80,', type:'dust',
+      });
+    }
+  }
+
+  function updateParticles() {
+    particles.forEach(p => {
+      if (p.type !== 'ring') {
+        p.x  += p.vx;
+        p.y  += p.vy;
+        if (p.type !== 'dust') p.vy += 0.2;
+        p.vx *= 0.97;
+      }
+      p.life -= p.decay;
+    });
+    particles = particles.filter(p => p.life > 0);
+  }
+
+  function drawParticle(p) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    if (p.type === 'ring') {
+      const rad = p.maxR * (1 - p.life);
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 5 * p.life;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0, rad), 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.type === 'dust' || p.type === 'trail') {
+      ctx.fillStyle = p.color + Math.max(0, p.life).toFixed(2) + ')';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.1, p.r * (p.type === 'dust' ? (1.3 - p.life * 0.3) : p.life)), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === 'star') {
+      ctx.fillStyle = p.color;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.life * 6);
+      const or = p.r, ir = p.r * 0.4;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = i * Math.PI * 2 / 5 - Math.PI / 2;
+        const bA = a + Math.PI / 5;
+        i === 0 ? ctx.moveTo(Math.cos(a)*or, Math.sin(a)*or) : ctx.lineTo(Math.cos(a)*or, Math.sin(a)*or);
+        ctx.lineTo(Math.cos(bA)*ir, Math.sin(bA)*ir);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.1, p.r * p.life), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ── Floaters ──────────────────────────────────────────────
+  function addFloater(x, y, text) {
+    floaters.push({ x, y, text, life: 1, decay: 0.016 });
+  }
+
+  function updateFloaters() {
+    floaters.forEach(f => { f.y -= 1.2; f.life -= f.decay; });
+    floaters = floaters.filter(f => f.life > 0);
+  }
+
+  function drawFloaters() {
+    floaters.forEach(f => {
+      ctx.save();
+      ctx.globalAlpha = f.life;
+      ctx.font = 'bold 22px Georgia';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#5a2a00';
+      ctx.fillStyle   = '#FFD700';
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
+    });
+  }
+
+  // ── Play button ───────────────────────────────────────────
+  ctaBtn.addEventListener('click', () => {
+    ctaBtn.style.display = 'none';
+    hintEl.style.display = 'block';
+    bricks.forEach(b => { b.alive = true; });
+    balls      = [];
+    particles  = [];
+    floaters   = [];
+    score      = 0;
+    scoreEl.textContent = '0';
+    gameActive = true;
+  });
+
+  // ── Click-to-drop — listen on document so nothing blocks it
+  document.addEventListener('click', (e) => {
+    if (!gameActive) return;
+    if (e.target === ctaBtn) return;
+    spawnBall(e.clientX);
+  });
+
+  // ── Main loop ─────────────────────────────────────────────
+  function loop() {
+    frame++;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    updateBalls();
+    updateParticles();
+    updateFloaters();
+
+    bricks.forEach(drawBrick);
+    particles.filter(p => p.type === 'trail' || p.type === 'dust').forEach(drawParticle);
+    balls.forEach(drawBall);
+    particles.filter(p => p.type !== 'trail' && p.type !== 'dust').forEach(drawParticle);
+    drawFloaters();
+
+    requestAnimationFrame(loop);
+  }
+
+  // ── Boot ──────────────────────────────────────────────────
+  resize();
+  loop();
+})();
+</script>
+</body>
+</html>
