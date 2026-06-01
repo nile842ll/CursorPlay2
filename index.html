@@ -464,66 +464,116 @@
     ctx.translate(cx, cy);
     ctx.scale(fistSX, fistSY);
 
-    const skin   = fistFlash > 0 ? 'rgba(255,250,180,1)' : '#c87a3a';
-    const skinDk = '#7a3a10';
-    const line   = '#2a1000';
+    const SKIN  = fistFlash > 0 ? '#fff9aa' : '#d4884a';
+    const SDARK = '#8a4010';
+    const LINE  = '#1a0800';
+    const LW    = 2.8;
 
     // Drop shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.ellipse(5, 36, 29, 9, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath(); ctx.ellipse(3, 40, 28, 9, 0, 0, Math.PI*2); ctx.fill();
 
-    // Vine wristband
-    ctx.fillStyle = '#4a9c2a';
-    ctx.beginPath(); ctx.rect(-24, 16, 54, 17); ctx.fill();
-    ctx.strokeStyle = '#2d6b15'; ctx.lineWidth = 1.5; ctx.strokeRect(-24, 16, 54, 17);
-    ctx.strokeStyle = '#7de040'; ctx.lineWidth = 1.2;
-    for (let i = 0; i < 6; i++) {
-      ctx.beginPath(); ctx.moveTo(-24+i*11, 16); ctx.lineTo(-24+i*11-7, 33); ctx.stroke();
-    }
-
-    // Knuckle bumps
-    const knX = [-19, -6, 7, 20];
-    knX.forEach(kx => {
-      ctx.fillStyle = skin; ctx.strokeStyle = line; ctx.lineWidth = 2.3;
-      ctx.beginPath(); ctx.arc(kx, -17, 10, Math.PI, 0, false); ctx.fill(); ctx.stroke();
-    });
-
-    // Palm body
-    ctx.fillStyle = skin; ctx.strokeStyle = line; ctx.lineWidth = 2.6;
+    // ── Vine wristband ──────────────────────────────────────
+    ctx.save();
     ctx.beginPath();
-    ctx.moveTo(-28, 16); ctx.lineTo(-32, -2); ctx.lineTo(-25, -15);
-    ctx.lineTo(25, -15); ctx.lineTo(32, -2);  ctx.lineTo(28, 16);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
+    const [wx,wy,ww,wh,wbr] = [-22, 20, 46, 16, 5];
+    ctx.moveTo(wx+wbr,wy); ctx.lineTo(wx+ww-wbr,wy);
+    ctx.arcTo(wx+ww,wy,   wx+ww,wy+wbr,   wbr);
+    ctx.lineTo(wx+ww,wy+wh-wbr);
+    ctx.arcTo(wx+ww,wy+wh,wx+ww-wbr,wy+wh,wbr);
+    ctx.lineTo(wx+wbr,wy+wh);
+    ctx.arcTo(wx,wy+wh,   wx,wy+wh-wbr,   wbr);
+    ctx.lineTo(wx,wy+wbr);
+    ctx.arcTo(wx,wy,      wx+wbr,wy,       wbr);
+    ctx.closePath();
+    ctx.fillStyle = '#4a9c2a'; ctx.fill();
+    ctx.strokeStyle = '#2d6b15'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.clip();                                       // stripe inside band only
+    ctx.strokeStyle = '#7de040'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath(); ctx.moveTo(wx+i*9-5, wy); ctx.lineTo(wx+i*9-14, wy+wh); ctx.stroke();
+    }
+    ctx.restore();
 
-    // Finger dividers
-    ctx.strokeStyle = skinDk; ctx.lineWidth = 1.5;
-    [-12, 0, 12].forEach(lx => {
-      ctx.beginPath(); ctx.moveTo(lx, -15); ctx.lineTo(lx+1, 16); ctx.stroke();
+    // ── Thumb (behind palm) ─────────────────────────────────
+    ctx.fillStyle = SKIN; ctx.strokeStyle = LINE; ctx.lineWidth = LW;
+    ctx.beginPath();
+    ctx.moveTo(-20, 4);
+    ctx.bezierCurveTo(-24,  0, -44, -2, -40, -14);  // outer curve
+    ctx.bezierCurveTo(-37, -23, -24, -19, -20, -10); // tip + inner
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // thumb knuckle crease
+    ctx.strokeStyle = SDARK; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-37, -8); ctx.bezierCurveTo(-33,-5,-28,-7,-26,-12); ctx.stroke();
+
+    // ── Main fist body ──────────────────────────────────────
+    // Knuckles face DOWNWARD (toward bricks/ball)
+    const KY = 16;            // knuckle baseline y
+    const KR = 9;             // knuckle arc radius
+    const KC = [21, 7, -7, -21]; // knuckle x-centers: pinky→index
+
+    // Gradient gives the body depth (lit top, shadowed bottom)
+    const g = ctx.createLinearGradient(0, -28, 0, KY+KR);
+    g.addColorStop(0,   fistFlash > 0 ? '#fffbcc' : '#e8a060');
+    g.addColorStop(0.45,fistFlash > 0 ? '#fff5aa' : SKIN);
+    g.addColorStop(1,   fistFlash > 0 ? '#ffe060' : SDARK);
+
+    ctx.fillStyle = g; ctx.strokeStyle = LINE; ctx.lineWidth = LW;
+    ctx.beginPath();
+    // Back of hand (top) – slightly arched
+    ctx.moveTo(-24, -22);
+    ctx.bezierCurveTo(-14, -28,  14, -28,  24, -22);
+    // Right side curving down to rightmost knuckle
+    ctx.bezierCurveTo(28, -12,  28,  6,  KC[0]+KR, KY);
+    // Four knuckle arcs — each arcs DOWNWARD from right to left
+    for (let i = 0; i < 4; i++) {
+      ctx.arc(KC[i], KY, KR, 0, Math.PI, false); // bulges toward bricks
+      if (i < 3) ctx.lineTo(KC[i+1]+KR, KY);     // valley between knuckles
+    }
+    // Left side back up
+    ctx.bezierCurveTo(-28, 6, -28, -12, -24, -22);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // ── Knuckle highlight circles ────────────────────────────
+    KC.forEach(kx => {
+      // Raised knuckle disc
+      ctx.fillStyle = SKIN; ctx.strokeStyle = LINE; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.arc(kx, KY+KR-1, 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      // Specular shine
+      ctx.fillStyle = fistFlash > 0 ? '#fffb80' : '#f0b878';
+      ctx.beginPath(); ctx.arc(kx-1.5, KY+KR-3.5, 3, 0, Math.PI*2); ctx.fill();
     });
 
-    // Knuckle shading
-    knX.forEach(kx => {
-      ctx.strokeStyle = 'rgba(80,30,0,0.45)'; ctx.lineWidth = 1.3;
-      ctx.beginPath(); ctx.arc(kx, -15, 7, Math.PI*.25, Math.PI*.75); ctx.stroke();
+    // ── Finger crease lines (show curled fingers) ────────────
+    ctx.strokeStyle = SDARK; ctx.lineWidth = 1.6;
+    [-11, 1].forEach(ly => {
+      ctx.beginPath();
+      ctx.moveTo(-22, ly);
+      ctx.bezierCurveTo(-13, ly-3, -7, ly+3,  0, ly);
+      ctx.bezierCurveTo(  7, ly-3, 13, ly+3, 22, ly);
+      ctx.stroke();
     });
 
-    // Thumb
-    ctx.fillStyle = skin; ctx.strokeStyle = line; ctx.lineWidth = 2.2;
-    ctx.beginPath(); ctx.ellipse(-34, 2, 13, 9, -0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = skinDk; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.arc(-36, 1, 7, Math.PI*.8, Math.PI*1.5); ctx.stroke();
+    // ── Vertical finger dividers ─────────────────────────────
+    ctx.strokeStyle = 'rgba(90,28,5,0.3)'; ctx.lineWidth = 1.2;
+    [-14, 0, 14].forEach(lx => {
+      ctx.beginPath(); ctx.moveTo(lx, -20); ctx.lineTo(lx+1, KY); ctx.stroke();
+    });
 
-    // Leaf accent
+    // ── Leaf accent ──────────────────────────────────────────
     ctx.fillStyle = '#3ad630'; ctx.strokeStyle = '#1e8c18'; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.ellipse(28, -24, 11, 6, 0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(28, -27, 11, 6, 0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = '#2ab020'; ctx.lineWidth = 0.9;
-    ctx.beginPath(); ctx.moveTo(19, -22); ctx.lineTo(35, -26); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(19,-25); ctx.lineTo(35,-29); ctx.stroke();
 
-    // Hit flash ring
+    // ── Hit flash ring ───────────────────────────────────────
     if (fistFlash > 0) {
       ctx.strokeStyle = `rgba(255,240,80,${fistFlash})`;
       ctx.lineWidth = 4 * fistFlash;
-      ctx.beginPath(); ctx.arc(0, 0, 44 + (1-fistFlash)*18, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 44+(1-fistFlash)*18, 0, Math.PI*2); ctx.stroke();
     }
 
     ctx.restore();
